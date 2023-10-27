@@ -1,15 +1,14 @@
 import gymnasium as gym
-import numpy as np
 import torch
-import torch.nn as nn
-# import torch.functional as F
+from model import Agent
+from args import args
 
 
 def create_env(human=False):
     env = gym.make(
         "LunarLander-v2",
         render_mode="human" if human else None,
-        continuous=False,
+        max_episode_steps=args.steps,
     )
 
     env.reset()
@@ -17,78 +16,75 @@ def create_env(human=False):
     return env
 
 
-def create_model(dropout=0.1):
-    model = nn.Sequential(
-        nn.Linear(8, 64),
-        nn.ReLU(),
-        nn.Dropout(dropout),
-        nn.Linear(64, 128),
-        nn.ReLU(),
-        nn.Dropout(dropout),
-        nn.Linear(128, 128),
-        nn.ReLU(),
-        nn.Dropout(dropout),
-        nn.Linear(128, 64),
-        nn.ReLU(),
-        nn.Dropout(dropout),
-        nn.Linear(64, 4),
-        nn.Softmax(dim=1),
-    )
-
-    return model
-
-
-def play_game(env, model, p=0):
+def play_game(env, agent, p=0):
     state, _ = env.reset()
     done = False
     truncated = False
 
-    actions = []
-    rewards = []
-
     while not done and not truncated:
-        state = torch.FloatTensor(state).reshape(1, 8)
-        action = model(state)
-
-        if np.random.rand() < p:
-            action = np.random.randint(4)
-            state, reward, done, truncated, _ = env.step(action)
-        else:
-            state, reward, done, truncated, _ = env.step(
-                action.argmax().item(),
-            )
-
-            actions.append(action)
-            rewards.append(reward)
-
-    return actions, rewards
+        state = torch.FloatTensor(state).reshape(1, 8).to(args.device)
+        actions, _, _, _ = agent.select_action(state)
+        state, _, terminated, truncated, _ = env.step(
+            actions.cpu().numpy()[0]
+        )
 
 
-env = create_env()
+envs = gym.vector.AsyncVectorEnv([
+    lambda: create_env()
+    for _ in range(args.envs)
+])
+
 human_env = create_env(human=True)
-model = create_model()
-optmizer = torch.optim.AdamW(model.parameters(), lr=0.001)
 
-i = 0
+agent = Agent().to(args.device)
 
-while True:
-    optmizer.zero_grad()
+envs_wrapper = gym.wrappers.RecordEpisodeStatistics(
+    envs,
+    deque_size=args.envs * args.steps
+)
 
-    loss = 0
+actor_losses = []
+entropies = []
 
-    for _ in range(20):
-        actions, rewards = play_game(env, model)
-        T = len(actions)
-        for t, (action, reward) in enumerate(zip(actions, rewards)):
-            loss -= action.max() * (reward + rewards[-1] * (T - t) ** -2)
+for epoch in range(args.epochs):
+    print(f"Training epoch {epoch}")
 
-    loss.backward()
-    optmizer.step()
+    ep_rewards = torch.zeros(args.steps, args.envs).to(args.device)
+    ep_action_log_probs = torch.zeros(args.steps, args.envs).to(args.device)
+    ep_state_values = torch.zeros(args.steps, args.envs).to(args.device)
+    masks = torch.zeros(args.steps, args.envs).to(args.device)
 
-    print(f"{loss = }")
+    if epoch == 0:
+        states, info = envs_wrapper.reset(seed=42)
 
-    i += 1
-    if i % 10 == 0:
-        play_game(human_env, model)
+    for step in range(args.steps):
+        actions, action_log_probs, state_values, entropy = agent.select_action(
+            torch.from_numpy(states).to(args.device)
+        )
 
-exit(0)
+        states, rewards, terminated, truncated, infos = envs_wrapper.step(
+            actions.cpu().numpy()
+        )
+
+        ep_rewards[step] = torch.tensor(rewards, device=args.device)
+        ep_action_log_probs[step] = action_log_probs
+        ep_state_values[step] = torch.squeeze(state_values)
+
+        masks[step] = torch.tensor([not term for term in terminated])
+
+    actor_loss, critic_loss = agent.get_losses(
+        ep_rewards,
+        ep_action_log_probs,
+        ep_state_values,
+        entropy,
+        masks
+    )
+
+    print(f"Loss: actor  = {actor_loss:.2f}")
+    print(f"      critic = {critic_loss:.2f}")
+
+    agent.update_parameters(actor_loss, critic_loss)
+
+    if epoch % 10 == 9:
+        with torch.no_grad():
+            play_game(human_env, agent)
