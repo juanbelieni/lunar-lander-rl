@@ -11,7 +11,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--epochs", type=int, default=200,
+    "--epochs", type=int, default=500,
     help="Number of training epochs"
 )
 

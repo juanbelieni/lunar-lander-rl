@@ -2,39 +2,11 @@ import gymnasium as gym
 import torch
 from model import Agent
 from args import args
+from env import create_env, create_envs
 
-
-def create_env(human=False):
-    env = gym.make(
-        "LunarLander-v2",
-        render_mode="human" if human else None,
-        max_episode_steps=args.steps,
-    )
-
-    env.reset()
-
-    return env
-
-
-def play_game(env, agent, p=0):
-    state, _ = env.reset()
-    done = False
-    truncated = False
-
-    while not done and not truncated:
-        state = torch.FloatTensor(state).reshape(1, 8).to(args.device)
-        actions, _, _, _ = agent.select_action(state)
-        state, _, terminated, truncated, _ = env.step(
-            actions.cpu().numpy()[0]
-        )
-
-
-envs = gym.vector.AsyncVectorEnv([
-    lambda: create_env()
-    for _ in range(args.envs)
-])
 
 human_env = create_env(human=True)
+envs = create_envs(n=args.envs, randomize=False)
 
 agent = Agent().to(args.device)
 
@@ -55,14 +27,14 @@ for epoch in range(args.epochs):
     masks = torch.zeros(args.steps, args.envs).to(args.device)
 
     if epoch == 0:
-        states, info = envs_wrapper.reset(seed=42)
+        states, _ = envs_wrapper.reset(seed=42)
 
     for step in range(args.steps):
         actions, action_log_probs, state_values, entropy = agent.select_action(
             torch.from_numpy(states).to(args.device)
         )
 
-        states, rewards, terminated, truncated, infos = envs_wrapper.step(
+        states, rewards, terminated, _, _ = envs_wrapper.step(
             actions.cpu().numpy()
         )
 
@@ -85,6 +57,14 @@ for epoch in range(args.epochs):
 
     agent.update_parameters(actor_loss, critic_loss)
 
-    if epoch % 10 == 9:
+    if (epoch + 1) % 8 == 0:
         with torch.no_grad():
-            play_game(human_env, agent)
+            state, _ = human_env.reset()
+            done = False
+            truncated = False
+
+            while not done and not truncated:
+                state = torch.FloatTensor(state).reshape(1, 8).to(args.device)
+                actions, _, _, _ = agent.select_action(state)
+                action = actions.cpu().numpy()[0]
+                state, _, terminated, truncated, _ = human_env.step(action)
