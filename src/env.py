@@ -10,6 +10,7 @@ def create_env(human=False, randomize=False):
         render_mode="human" if human else None,
         max_episode_steps=args.steps,
         enable_wind=False if not randomize or np.random.rand() < 0.5 else True,
+        wind_power=np.random.uniform(0, 20) if randomize else 15,
         turbulence_power=np.random.uniform(0, 2) if randomize else 1.5
     )
 

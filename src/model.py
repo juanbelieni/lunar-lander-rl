@@ -1,11 +1,28 @@
+import os
 import torch
 import torch.nn as nn
 from args import args
+from datetime import datetime
 
 
 class Agent(nn.Module):
-    def __init__(self):
+    def __init__(
+        self,
+        gamma=0.999,
+        lam=0.95,
+        entropy_coef=0.01,
+        actor_lr=0.001,
+        critic_lr=0.005
+    ):
         super().__init__()
+
+        self.reset_id()
+
+        self.gamma = gamma
+        self.lam = lam
+        self.entropy_coef = entropy_coef
+        self.actor_lr = actor_lr
+        self.critic_lr = critic_lr
 
         self.actor = nn.Sequential(
             nn.Linear(8, 32),
@@ -25,11 +42,11 @@ class Agent(nn.Module):
 
         self.actor_optimizer = torch.optim.AdamW(
             self.actor.parameters(),
-            lr=0.001
+            lr=self.actor_lr
         )
         self.critic_optimizer = torch.optim.AdamW(
             self.critic.parameters(),
-            lr=0.001
+            lr=self.critic_lr
         )
 
     def forward(self, states: torch.Tensor):
@@ -54,7 +71,7 @@ class Agent(nn.Module):
         rewards: torch.Tensor,
         action_log_probs: torch.Tensor,
         state_values: torch.Tensor,
-        entropy: torch.Tensor,
+        entropies: torch.Tensor,
         masks: torch.Tensor,
     ):
         T = len(rewards)
@@ -63,15 +80,15 @@ class Agent(nn.Module):
         gae = 0.0
 
         for t in reversed(range(T - 1)):
-            td_error = rewards[t] + 0.99 * masks[t] * \
+            td_error = rewards[t] + self.gamma * masks[t] * \
                 state_values[t + 1] - state_values[t]
 
-            gae = td_error + 0.999 * 0.95 * masks[t] * gae
+            gae = td_error + self.gamma * self.lam * masks[t] * gae
             advantages[t] = gae
 
         actor_loss = (
             -(advantages.detach() * action_log_probs).mean() -
-            0.01 * entropy.mean()
+            self.entropy_coef * entropies.mean() - 100
         )
 
         critic_loss = advantages.pow(2).mean()
@@ -86,3 +103,33 @@ class Agent(nn.Module):
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
+
+        self.version += 1
+
+    def log(
+        self,
+        rewards_mean,
+        state_values_mean,
+        action_log_probs_mean,
+        entropies_mean,
+        actor_loss,
+        critic_loss
+    ):
+        path = f"states/{self.name}"
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        with open(f"{path}/log.csv", "a") as file:
+            file.write(
+                f"{self.version},{rewards_mean},{state_values_mean},{action_log_probs_mean},{entropies_mean},{actor_loss},{critic_loss}\n")
+
+    def save(self):
+        path = f"states/{self.name}"
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        torch.save(self, f"{path}/{self.version:05d}.pt")
+
+    def reset_id(self):
+        self.name = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        self.version = 0
