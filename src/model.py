@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from args import args
 from datetime import datetime
 
@@ -8,8 +9,8 @@ from datetime import datetime
 class Agent(nn.Module):
     def __init__(
         self,
-        gamma=0.999,
-        lam=0.95,
+        gamma=0.99,
+        alpha=0.95,
         entropy_coef=0.01,
         actor_lr=0.001,
         critic_lr=0.005
@@ -19,17 +20,17 @@ class Agent(nn.Module):
         self.reset_id()
 
         self.gamma = gamma
-        self.lam = lam
+        self.alpha = alpha
         self.entropy_coef = entropy_coef
         self.actor_lr = actor_lr
         self.critic_lr = critic_lr
 
         self.actor = nn.Sequential(
-            nn.Linear(8, 32),
+            nn.Linear(8, 64),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(32, 4)
+            nn.Linear(64, 4)
         )
 
         self.critic = nn.Sequential(
@@ -63,11 +64,14 @@ class Agent(nn.Module):
         entropy = action_dist.entropy()
 
         state_values = self.critic(states)
+        actions = torch.argmax(action_logits, dim=-1)
 
         return (actions, action_log_probs, state_values, entropy)
 
     def get_losses(
         self,
+        states: torch.Tensor,
+        actions: torch.Tensor,
         rewards: torch.Tensor,
         action_log_probs: torch.Tensor,
         state_values: torch.Tensor,
@@ -75,23 +79,53 @@ class Agent(nn.Module):
         masks: torch.Tensor,
     ):
         T = len(rewards)
-        advantages = torch.zeros(T, args.envs).to(args.device)
 
-        gae = 0.0
+        actions = actions.long().unsqueeze(-1)
+
+        q, _ = self.forward(states)
+        q = torch.gather(q, dim=2, index=actions)[:, :, 0]
+
+        # qsa_next, _ = self.forward(states[1:])
+        q_target = torch.zeros(T, args.envs)
+
+        acc = q[T - 1]
 
         for t in reversed(range(T - 1)):
-            td_error = rewards[t] + self.gamma * masks[t] * \
-                state_values[t + 1] - state_values[t]
+            delta = rewards[t] + self.gamma * acc - q[t]
+            acc = q[t] + masks[t] * self.alpha * delta
+            q_target[t] = acc
 
-            gae = td_error + self.gamma * self.lam * masks[t] * gae
-            advantages[t] = gae
+        # qsa_next = torch.gather(qsa_next, dim=2, index=actions[1:])[:, :, 0]
+        # qsa_next = masks[1:] * qsa_next
+        # qsa_target = rewards[1:] + masks[1:] * self.lam * qsa_next
+        # qsa_target = qsa_target[:-1]
 
-        actor_loss = (
-            -(advantages.detach() * action_log_probs).mean() -
-            self.entropy_coef * entropies.mean() - 100
-        )
+        # q = masks * q
+        # q_target = masks * q_target
 
-        critic_loss = advantages.pow(2).mean()
+        # print(q_target)
+
+        loss_fn = nn.SmoothL1Loss()
+        actor_loss = loss_fn(q, q_target.detach())
+
+        # exit(0)
+
+        # advantages = torch.zeros(T, args.envs).to(args.device)
+
+        # gae = 0.0
+
+        # for t in reversed(range(T - 1)):
+        # #     td_error = rewards[t] + gamma * masks[t] * action_log_probs[t + 1] - value_preds[t]
+
+        #     # gae = td_error + self.gamma * self.lam * masks[t] * gae
+        #     gae +=
+        #     advantages[t] = gae
+
+        # actor_loss = -((advantages.detach() * action_log_probs).mean() +
+        #                self.entropy_coef * entropies.mean())
+
+        # critic_loss = advantages.pow(2).mean()
+        critic_loss = torch.tensor(1)
 
         return actor_loss, critic_loss
 
@@ -100,9 +134,9 @@ class Agent(nn.Module):
         actor_loss.backward()
         self.actor_optimizer.step()
 
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        self.critic_optimizer.step()
+        # self.critic_optimizer.zero_grad()
+        # critic_loss.backward()
+        # self.critic_optimizer.step()
 
         self.version += 1
 

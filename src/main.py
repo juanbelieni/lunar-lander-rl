@@ -25,39 +25,52 @@ match args.command:
         actor_losses = []
         entropies = []
 
+        epsilon = 0.5
+
         for epoch in range(args.epochs):
             print(f"Training epoch {epoch}")
 
             S, E = args.steps, args.envs
 
+            ep_states = torch.zeros(S, E, 8).to(args.device)
+            ep_actions = torch.zeros(S, E).to(args.device)
             ep_rewards = torch.zeros(S, E).to(args.device)
             ep_action_log_probs = torch.zeros(S, E).to(args.device)
             ep_state_values = torch.zeros(S, E).to(args.device)
             ep_entropies = torch.zeros(S, E).to(args.device)
-            ep_masks = torch.zeros(S, E).to(args.device)
+            ep_masks = torch.ones(S, E).to(args.device)
 
-            if epoch == 0:
-                states, _ = envs_wrapper.reset(seed=42)
+            # if epoch == 0:
+            states, _ = envs_wrapper.reset(seed=42)
+            states = torch.from_numpy(states).to(args.device)
 
             for step in range(args.steps):
+                ep_states[step] = states
                 actions, action_log_probs, state_values, entropies = agent.select_action(
-                    torch.from_numpy(states).to(args.device)
+                    states
                 )
 
                 actions = actions.cpu().numpy()
-                actions[np.random.rand(E) < 0.05] = np.random.randint(4)
+                actions[np.random.rand(E) < epsilon] = np.random.randint(4)
 
                 states, rewards, terminated, _, _ = envs_wrapper.step(actions)
+                states = torch.from_numpy(states).to(args.device)
 
-                ep_rewards[step] = torch.tensor(rewards, device=args.device)
+                ep_actions[step] = torch.from_numpy(actions).to(args.device)
+                ep_rewards[step] = torch.tensor(rewards).to(args.device)
                 ep_action_log_probs[step] = action_log_probs
                 ep_state_values[step] = torch.squeeze(state_values)
                 ep_entropies[step] = entropies
 
-                ep_masks[step] = torch.tensor(
-                    [not term for term in terminated])
+                if step < args.steps - 1:
+                    ep_masks[step + 1] = (
+                        ep_masks[step] *
+                        torch.tensor([not t for t in terminated])
+                    )
 
             actor_loss, critic_loss = agent.get_losses(
+                ep_states,
+                ep_actions,
                 ep_rewards,
                 ep_action_log_probs,
                 ep_state_values,
@@ -65,23 +78,30 @@ match args.command:
                 ep_masks
             )
 
-            print(f"Loss: actor  = {actor_loss:.2f}")
-            print(f"      critic = {critic_loss:.2f}")
+            # print(ep_masks)
 
-            agent.log(
-                rewards_mean=ep_rewards.mean().item(),
-                state_values_mean=ep_state_values.mean().item(),
-                action_log_probs_mean=ep_state_values.mean().item(),
-                entropies_mean=ep_entropies.mean().item(),
-                actor_loss=actor_loss.item(),
-                critic_loss=critic_loss.item(),
-            )
+            print(f"Loss    = {actor_loss:.2f}")
+            # print(f"       = {critic_loss:.2f}")
+            print(
+                f"Reward  = {(ep_masks * ep_rewards).sum(axis=0).mean().item()}")
+            print(f"Epsilon = {epsilon}")
+
+            # agent.log(
+            #     rewards_mean=ep_rewards.mean().item(),
+            #     state_values_mean=ep_state_values.mean().item(),
+            #     action_log_probs_mean=ep_state_values.mean().item(),
+            #     entropies_mean=ep_entropies.mean().item(),
+            #     actor_loss=actor_loss.item(),
+            #     critic_loss=critic_loss.item(),
+            # )
 
             agent.update_parameters(actor_loss, critic_loss)
 
             if agent.version % args.save_interval == 0:
                 agent.save()
                 print("Saving model.")
+
+            epsilon = max(epsilon * 0.995, 0.15)
 
             print("")
 
@@ -92,12 +112,17 @@ match args.command:
         while True:
             with torch.no_grad():
                 state, _ = env.reset()
-                done = False
+                terminated = False
                 truncated = False
 
-                while not done and not truncated:
+                while not terminated and not truncated:
                     state = torch.FloatTensor(
                         state).reshape(1, 8).to(args.device)
                     actions, _, _, _ = agent.select_action(state)
                     action = actions.cpu().numpy()[0]
-                    state, _, terminated, truncated, _ = env.step(action)
+                    state, reward, terminated, truncated, _ = env.step(action)
+
+                    print(
+                        f"Terminated = {terminated}, Truncated = {truncated}, Reward = {reward}")
+
+                # input("")
