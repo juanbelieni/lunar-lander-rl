@@ -143,11 +143,7 @@ class Agent(nn.Module):
     def log(
         self,
         rewards_mean,
-        state_values_mean,
-        action_log_probs_mean,
-        entropies_mean,
-        actor_loss,
-        critic_loss
+        loss,
     ):
         path = f"states/{self.name}"
         if not os.path.exists(path):
@@ -155,7 +151,7 @@ class Agent(nn.Module):
 
         with open(f"{path}/log.csv", "a") as file:
             file.write(
-                f"{self.version},{rewards_mean},{state_values_mean},{action_log_probs_mean},{entropies_mean},{actor_loss},{critic_loss}\n")
+                f"{self.version},{rewards_mean},{loss}\n")
 
     def save(self):
         path = f"states/{self.name}"

@@ -81,19 +81,14 @@ match args.command:
             # print(ep_masks)
 
             print(f"Loss    = {actor_loss:.2f}")
-            # print(f"       = {critic_loss:.2f}")
             print(
                 f"Reward  = {(ep_masks * ep_rewards).sum(axis=0).mean().item()}")
             print(f"Epsilon = {epsilon}")
 
-            # agent.log(
-            #     rewards_mean=ep_rewards.mean().item(),
-            #     state_values_mean=ep_state_values.mean().item(),
-            #     action_log_probs_mean=ep_state_values.mean().item(),
-            #     entropies_mean=ep_entropies.mean().item(),
-            #     actor_loss=actor_loss.item(),
-            #     critic_loss=critic_loss.item(),
-            # )
+            agent.log(
+                rewards_mean=(ep_masks * ep_rewards).sum(axis=0).mean().item(),
+                loss=actor_loss.item(),
+            )
 
             agent.update_parameters(actor_loss, critic_loss)
 
