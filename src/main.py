@@ -25,7 +25,7 @@ match args.command:
         actor_losses = []
         entropies = []
 
-        epsilon = 0.5
+        epsilon = 1
 
         for epoch in range(args.epochs):
             print(f"Training epoch {epoch}")

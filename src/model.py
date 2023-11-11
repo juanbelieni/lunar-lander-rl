@@ -88,12 +88,12 @@ class Agent(nn.Module):
         # qsa_next, _ = self.forward(states[1:])
         q_target = torch.zeros(T, args.envs)
 
-        acc = q[T - 1]
+        # acc = 0
 
         for t in reversed(range(T - 1)):
-            delta = rewards[t] + self.gamma * acc - q[t]
-            acc = q[t] + masks[t] * self.alpha * delta
-            q_target[t] = acc
+            delta = rewards[t] + self.gamma * q[t + 1] - q[t]
+            # acc = q[t] + masks[t] * self.alpha * delta
+            q_target[t] = q[t] + masks[t] * self.alpha * delta
 
         # qsa_next = torch.gather(qsa_next, dim=2, index=actions[1:])[:, :, 0]
         # qsa_next = masks[1:] * qsa_next
