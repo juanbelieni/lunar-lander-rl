@@ -19,15 +19,10 @@ match args.command:
 
         envs_wrapper = gym.wrappers.RecordEpisodeStatistics(
             envs,
-            deque_size=100
+            deque_size=50
         )
 
-        actor_losses = []
-        entropies = []
-
-        epsilon = 1
-
-        states, _ = envs_wrapper.reset(seed=42)
+        envs_wrapper.reset(seed=42)
 
         for _ in range(args.steps):
             states, _, _, _, _ = envs_wrapper.step(
@@ -44,12 +39,13 @@ match args.command:
             ep_rewards = torch.FloatTensor([])
             ep_masks = torch.FloatTensor([])
 
-            for _ in range(5):
+            for _ in range(2):
                 _, _, actions = agent.select_action(states)
                 actions = actions.cpu().numpy()
 
                 next_states, rewards, terminated, _, _ = envs_wrapper.step(
-                    actions)
+                    actions,
+                )
                 next_states = torch.from_numpy(next_states).to(args.device)
 
                 actions = torch.from_numpy(actions).to(args.device)
@@ -64,24 +60,27 @@ match args.command:
 
                 states = next_states
 
-            actor_loss = agent.get_losses(
-                states,
-                next_states,
-                actions,
-                rewards,
-                masks
+            loss = agent.get_losses(
+                ep_states,
+                ep_next_states,
+                ep_actions,
+                ep_rewards,
+                ep_masks
             )
 
-            print(f"Loss    = {actor_loss:.2f}")
             print(f"Reward  = {np.mean(list(envs_wrapper.return_queue))}")
+            print(f"Loss    = {loss:.3f}")
 
-            agent.update_parameters(actor_loss)
+            agent.update_parameters(loss)
+
+            agent.log(
+                rewards_mean=np.mean(list(envs_wrapper.return_queue)),
+                loss=loss
+            )
 
             if agent.version % args.save_interval == 0:
                 agent.save()
                 print("Saving model.")
-
-            epsilon = max(epsilon * 0.995, 0.15)
 
             print("")
 

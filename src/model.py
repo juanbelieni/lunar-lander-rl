@@ -51,14 +51,13 @@ class Agent(nn.Module):
         )
 
     def forward(self, states: torch.Tensor):
-        action_logits = self.actor(states)
-        return action_logits
+        return self.actor(states)
 
-    def select_action(self, states: torch.Tensor):
+    def select_action(self, states: torch.Tensor, tau=0.9):
         q = self.forward(states)
 
         probs = torch.nan_to_num(
-            F.gumbel_softmax(q, tau=0.9, dim=-1),
+            F.gumbel_softmax(q, tau=tau, dim=-1),
             nan=0.25
         )
 
@@ -74,7 +73,6 @@ class Agent(nn.Module):
         rewards: torch.Tensor,
         masks: torch.Tensor,
     ):
-        # T = len(rewards)
         actions = actions.long().unsqueeze(-1)
 
         q, probs, _ = self.select_action(states)
@@ -87,47 +85,15 @@ class Agent(nn.Module):
 
         q_target = q + self.alpha * delta
 
-        # qsa_next = torch.gather(qsa_next, dim=2, index=actions[1:])[:, :, 0]
-        # qsa_next = masks[1:] * qsa_next
-        # qsa_target = rewards[1:] + masks[1:] * self.lam * qsa_next
-        # qsa_target = qsa_target[:-1]
-
-        # q = masks * q
-        # q_target = masks * q_target
-
-        # print(q_target)
-
         loss_fn = nn.SmoothL1Loss()
-        actor_loss = loss_fn(q, q_target.detach())
+        loss = loss_fn(q, q_target.detach())
 
-        # exit(0)
-
-        # advantages = torch.zeros(T, args.envs).to(args.device)
-
-        # gae = 0.0
-
-        # for t in reversed(range(T - 1)):
-        # #     td_error = rewards[t] + gamma * masks[t] * action_log_probs[t + 1] - value_preds[t]
-
-        #     # gae = td_error + self.gamma * self.lam * masks[t] * gae
-        #     gae +=
-        #     advantages[t] = gae
-
-        # actor_loss = -((advantages.detach() * action_log_probs).mean() +
-        #                self.entropy_coef * entropies.mean())
-
-        # critic_loss = advantages.pow(2).mean()
-
-        return actor_loss
+        return loss
 
     def update_parameters(self, actor_loss: torch.Tensor):
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-
-        # self.critic_optimizer.zero_grad()
-        # critic_loss.backward()
-        # self.critic_optimizer.step()
 
         self.version += 1
 
