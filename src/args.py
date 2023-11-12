@@ -6,7 +6,7 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument(
-    "--steps", type=int, default=300,
+    "--steps", type=int, default=250,
     help="Maximum number of steps"
 )
 
@@ -43,7 +43,7 @@ train_parser.add_argument(
 )
 
 train_parser.add_argument(
-    "--save-interval", type=int, default=10,
+    "--save-interval", type=int, default=200,
     help="Interval (in epochs) to save the models"
 )
 

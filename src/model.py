@@ -52,48 +52,40 @@ class Agent(nn.Module):
 
     def forward(self, states: torch.Tensor):
         action_logits = self.actor(states)
-        state_values = self.critic(states)
-        return action_logits, state_values
+        return action_logits
 
     def select_action(self, states: torch.Tensor):
-        action_logits, state_values = self.forward(states)
-        action_dist = torch.distributions.Categorical(logits=action_logits)
+        q = self.forward(states)
 
-        actions = action_dist.sample()
-        action_log_probs = action_dist.log_prob(actions)
-        entropy = action_dist.entropy()
+        probs = torch.nan_to_num(
+            F.gumbel_softmax(q, tau=0.9, dim=-1),
+            nan=0.25
+        )
 
-        state_values = self.critic(states)
-        actions = torch.argmax(action_logits, dim=-1)
+        actions = torch.distributions.Categorical(probs).sample()
 
-        return (actions, action_log_probs, state_values, entropy)
+        return q, probs, actions
 
     def get_losses(
         self,
         states: torch.Tensor,
+        next_states: torch.Tensor,
         actions: torch.Tensor,
         rewards: torch.Tensor,
-        action_log_probs: torch.Tensor,
-        state_values: torch.Tensor,
-        entropies: torch.Tensor,
         masks: torch.Tensor,
     ):
-        T = len(rewards)
-
+        # T = len(rewards)
         actions = actions.long().unsqueeze(-1)
 
-        q, _ = self.forward(states)
-        q = torch.gather(q, dim=2, index=actions)[:, :, 0]
+        q, probs, _ = self.select_action(states)
+        q = torch.gather(q, dim=1, index=actions)[:, 0]
 
-        # qsa_next, _ = self.forward(states[1:])
-        q_target = torch.zeros(T, args.envs)
+        q_target, probs_target, _ = self.select_action(next_states)
 
-        # acc = 0
+        delta = torch.sum(q_target * probs_target, dim=-1)
+        delta = rewards + self.gamma * masks * delta - q
 
-        for t in reversed(range(T - 1)):
-            delta = rewards[t] + self.gamma * q[t + 1] - q[t]
-            # acc = q[t] + masks[t] * self.alpha * delta
-            q_target[t] = q[t] + masks[t] * self.alpha * delta
+        q_target = q + self.alpha * delta
 
         # qsa_next = torch.gather(qsa_next, dim=2, index=actions[1:])[:, :, 0]
         # qsa_next = masks[1:] * qsa_next
@@ -125,11 +117,10 @@ class Agent(nn.Module):
         #                self.entropy_coef * entropies.mean())
 
         # critic_loss = advantages.pow(2).mean()
-        critic_loss = torch.tensor(1)
 
-        return actor_loss, critic_loss
+        return actor_loss
 
-    def update_parameters(self, actor_loss: torch.Tensor, critic_loss: torch.Tensor):
+    def update_parameters(self, actor_loss: torch.Tensor):
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
