@@ -17,7 +17,15 @@ Alguns componentes chaves do modelo:
 
 ### Resultados Deep Q-Learning
 
+![Rewards DQN](Ambiente padrão/results/output_dqn.png)
+
+![Vídeo DQN](Ambiente padrão/results/dqn.mp4)
+
 ### Resultados Deep Sarsa
+
+![Rewards Sarsa](Ambiente padrão/results/output_sarsa.png)
+
+![Vídeo Sarsa](Ambiente padrão/results/sarsa.mp4)
 
 ### Ambiente vetorizado
 
