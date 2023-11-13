@@ -15,16 +15,22 @@ Alguns componentes chaves do modelo:
 - **Buffer de Repetição:** Responsável por armazenar informações dos episódios, permitindo a amostragem e treinamento eficientes da rede.
 - **Estratégia Epsilon-Greedy:** Adotada para a exploração, alternando entre a escolha da melhor ação conhecida (greedy) e escolhas aleatórias (exploração).
 
+Como um episódio é considerado solução se obtiver pelo menos 200 pontos, vemos que ambos os modelos chegaram a solução, onde o Sarsa parece ter menos variância, o que pode ser influenciado por sua aprendizagem on-policy, enquanto o DQN é off-policy.
+
 ### Resultados Deep Q-Learning
 
 
 <img src="/Ambiente padrão/results/output_dqn.png">
+
+<img src="/Ambiente padrão/results/dqn.gif">
 
 
 
 ### Resultados Deep Sarsa
 
 <img src="/Ambiente padrão/results/output_sarsa.png">
+
+<img src="/Ambiente padrão/results/dqn.gif">
 
 
 
