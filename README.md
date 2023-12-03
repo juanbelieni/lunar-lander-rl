@@ -20,17 +20,17 @@ Como um episódio é considerado solução se obtiver pelo menos 200 pontos, vem
 ### Resultados Deep Q-Learning
 
 
-<img src="/Ambiente padrão/results/output_dqn.png">
+<img src="./Ambiente padrão/results/output_dqn.png">
 
-<img src="/Ambiente padrão/results/dqn.gif">
+<img src="./Ambiente padrão/results/dqn.gif">
 
 
 
 ### Resultados Deep Sarsa
 
-<img src="/Ambiente padrão/results/output_sarsa.png">
+<img src="./Ambiente padrão/results/output_sarsa.png">
 
-<img src="/Ambiente padrão/results/dqn.gif">
+<img src="./Ambiente padrão/results/dqn.gif">
 
 
 
@@ -43,7 +43,7 @@ Neste caso, o modelo utilizado foi o Deep Sarsa, que foi adaptado para receber u
 Também notamos que era melhor o modelo ser treinado em cada epoch verificando menos steps de mais ambientes, do que mais steps de menos ambientes. Dessa forma, precisamos iniciar um número maior de ambientes aleatórios para obter melhores resultados, o que impactou significativamente o tempo de treinamento pelo custo computacional. Por esse motivo, também não implementamos um buffer da forma tradicional, pois seria ainda mais custoso computacionalmente salvar todos os estados de todos os ambientes.
 
 ### Resultados Deep Sarsa
-<img src="./video/LunarLander-sarsa-random-envs.mp4">
+<img src="./video/LunarLander-sarsa-random-envs.gif">
 
 ## Apresentação
 
