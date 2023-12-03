@@ -49,6 +49,7 @@ Também notamos que era melhor o modelo ser treinado em cada epoch verificando m
 
 Slides:
 
+* [Link para apresentação (vídeos)](https://www.canva.com/design/DAFz5JrqS-U/wHmw9U4I9vsFlbghCVAvqA/view?utm_content=DAFz5JrqS-U&utm_campaign=designshare&utm_medium=link&utm_source=editor)
 * [PDF](./slides/lunar_lander_presentation.pdf)
 * [PPTX](./slides/lunar_lander_presentation.pptx)
 
