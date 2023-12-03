@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from args import args
 from datetime import datetime
 
@@ -8,8 +9,8 @@ from datetime import datetime
 class Agent(nn.Module):
     def __init__(
         self,
-        gamma=0.999,
-        lam=0.95,
+        gamma=0.99,
+        alpha=0.95,
         entropy_coef=0.01,
         actor_lr=0.001,
         critic_lr=0.005
@@ -19,17 +20,17 @@ class Agent(nn.Module):
         self.reset_id()
 
         self.gamma = gamma
-        self.lam = lam
+        self.alpha = alpha
         self.entropy_coef = entropy_coef
         self.actor_lr = actor_lr
         self.critic_lr = critic_lr
 
         self.actor = nn.Sequential(
-            nn.Linear(8, 32),
+            nn.Linear(8, 64),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(32, 4)
+            nn.Linear(64, 4)
         )
 
         self.critic = nn.Sequential(
@@ -50,70 +51,56 @@ class Agent(nn.Module):
         )
 
     def forward(self, states: torch.Tensor):
-        action_logits = self.actor(states)
-        state_values = self.critic(states)
-        return action_logits, state_values
+        return self.actor(states)
 
-    def select_action(self, states: torch.Tensor):
-        action_logits, state_values = self.forward(states)
-        action_dist = torch.distributions.Categorical(logits=action_logits)
+    def select_action(self, states: torch.Tensor, tau=0.9):
+        q = self.forward(states)
 
-        actions = action_dist.sample()
-        action_log_probs = action_dist.log_prob(actions)
-        entropy = action_dist.entropy()
+        probs = torch.nan_to_num(
+            F.gumbel_softmax(q, tau=tau, dim=-1),
+            nan=0.25
+        )
 
-        state_values = self.critic(states)
+        actions = torch.distributions.Categorical(probs).sample()
 
-        return (actions, action_log_probs, state_values, entropy)
+        return q, probs, actions
 
     def get_losses(
         self,
+        states: torch.Tensor,
+        next_states: torch.Tensor,
+        actions: torch.Tensor,
         rewards: torch.Tensor,
-        action_log_probs: torch.Tensor,
-        state_values: torch.Tensor,
-        entropies: torch.Tensor,
         masks: torch.Tensor,
     ):
-        T = len(rewards)
-        advantages = torch.zeros(T, args.envs).to(args.device)
+        actions = actions.long().unsqueeze(-1)
 
-        gae = 0.0
+        q, probs, _ = self.select_action(states)
+        q = torch.gather(q, dim=1, index=actions)[:, 0]
 
-        for t in reversed(range(T - 1)):
-            td_error = rewards[t] + self.gamma * masks[t] * \
-                state_values[t + 1] - state_values[t]
+        q_target, probs_target, _ = self.select_action(next_states)
 
-            gae = td_error + self.gamma * self.lam * masks[t] * gae
-            advantages[t] = gae
+        delta = torch.sum(q_target * probs_target, dim=-1)
+        delta = rewards + self.gamma * masks * delta - q
 
-        actor_loss = (
-            -(advantages.detach() * action_log_probs).mean() -
-            self.entropy_coef * entropies.mean() - 100
-        )
+        q_target = q + self.alpha * delta
 
-        critic_loss = advantages.pow(2).mean()
+        loss_fn = nn.SmoothL1Loss()
+        loss = loss_fn(q, q_target.detach())
 
-        return actor_loss, critic_loss
+        return loss
 
-    def update_parameters(self, actor_loss: torch.Tensor, critic_loss: torch.Tensor):
+    def update_parameters(self, actor_loss: torch.Tensor):
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        self.critic_optimizer.step()
 
         self.version += 1
 
     def log(
         self,
         rewards_mean,
-        state_values_mean,
-        action_log_probs_mean,
-        entropies_mean,
-        actor_loss,
-        critic_loss
+        loss,
     ):
         path = f"states/{self.name}"
         if not os.path.exists(path):
@@ -121,7 +108,7 @@ class Agent(nn.Module):
 
         with open(f"{path}/log.csv", "a") as file:
             file.write(
-                f"{self.version},{rewards_mean},{state_values_mean},{action_log_probs_mean},{entropies_mean},{actor_loss},{critic_loss}\n")
+                f"{self.version},{rewards_mean},{loss}\n")
 
     def save(self):
         path = f"states/{self.name}"
