@@ -1,4 +1,4 @@
-# Reinforcment Learning - Lunar Lander
+# Reinforcement Learning - Lunar Lander
 
 Repositório dedicado à avaliação final da disciplina de Aprendizado por Reforço na FGV-EMAp. Neste projeto, exploramos abordagens para resolver o problema do Lunar Lander do OpenAI Gym usando Deep Q-Learning e Deep SARSA para o ambiente padrão, além de Deep SARSA para ambientes vetorizados com a possibilidade de randomização de parâmetros.
 
