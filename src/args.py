@@ -59,6 +59,11 @@ play_parser = subparsers.add_parser(
 )
 
 play_parser.add_argument(
+    "--render-mode", type=str, default="view",
+    help="view or record"
+)
+
+play_parser.add_argument(
     "path", type=str,
     help="Path of the saved model"
 )

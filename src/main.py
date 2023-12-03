@@ -4,6 +4,8 @@ import torch
 from model import Agent
 from args import args
 from env import create_env, create_envs
+from gym.wrappers.monitoring import video_recorder
+from datetime import datetime
 
 match args.command:
     case "train":
@@ -88,20 +90,31 @@ match args.command:
         env = create_env(human=True)
         agent = torch.load(args.path).to(args.device)
 
-        while True:
+        if args.render_mode == "record":
+            now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            video_path = f"video/gameplay_{now}.mp4"
+            vid = video_recorder.VideoRecorder(
+                env, path=video_path, enabled=video_path is not None)
+            
+        for _ in range(10):
             with torch.no_grad():
                 state, _ = env.reset()
                 terminated = False
                 truncated = False
+                rewards = 0
 
                 while not terminated and not truncated:
-                    state = torch.FloatTensor(
-                        state).reshape(1, 8).to(args.device)
+                    state = torch.FloatTensor(state).reshape(1, 8).to(args.device)
                     _, _, actions = agent.select_action(state)
                     action = actions.cpu().numpy()[0]
                     state, reward, terminated, truncated, _ = env.step(action)
-
-                    print(
-                        f"Terminated = {terminated}, Truncated = {truncated}, Reward = {reward}")
-
-                # input("")
+                    rewards += reward
+                    
+                    if args.render_mode == "record":
+                        frame = env.render()
+                        vid.capture_frame()
+            print(
+                f"Terminated = {terminated}, Truncated = {truncated}, Reward = {rewards}")
+            
+        if args.render_mode == "record":
+            vid.close()  
